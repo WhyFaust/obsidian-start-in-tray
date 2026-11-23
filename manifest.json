@@ -1,7 +1,7 @@
 {
   "id": "faust-login-tray",
   "name": "Start in Tray at Login",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.12.7",
   "description": "Start at Linux desktop login with the vault hidden in the system tray.",
   "author": "Faust",
