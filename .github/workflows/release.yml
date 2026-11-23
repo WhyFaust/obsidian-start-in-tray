@@ -1,0 +1,61 @@
+name: Release
+on:
+  push:
+    branches: [main]
+    tags: ['[0-9]*']
+  create:
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: >-
+      github.event_name == 'push' ||
+      (github.ref_type == 'branch' && startsWith(github.ref, 'refs/heads/faust/release/'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - run: |
+          if test -f package-lock.json; then
+            npm ci --no-audit --no-fund
+            npm run build
+          fi
+          node --check main.js
+          node -e 'const m=require("./manifest.json"); if (!/^\d+\.\d+\.\d+$/.test(m.version)) process.exit(1)'
+  release:
+    if: >-
+      (github.event_name == 'push' && github.ref_type == 'tag') ||
+      (github.event_name == 'create' && github.ref_type == 'branch' &&
+      startsWith(github.ref, 'refs/heads/faust/release/'))
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - run: |
+          if test -f package-lock.json; then
+            npm ci --no-audit --no-fund
+            npm run build
+          fi
+          version=$(node -p 'require("./manifest.json").version')
+          assets=(main.js manifest.json)
+          if test -f styles.css; then assets+=(styles.css); fi
+
+          if test "$GITHUB_REF_TYPE" = tag; then
+            test "$GITHUB_REF_NAME" = "$version"
+            gh release create "$version" "${assets[@]}" --verify-tag --generate-notes
+          else
+            test "$GITHUB_REF_NAME" = "faust/release/$version"
+            tag_refs=$(git ls-remote origin "refs/tags/$version" "refs/tags/$version^{}")
+            tagged_commit=$(awk 'NR == 1 {sha = $1} /\^\{\}$/ {sha = $1} END {print sha}' <<< "$tag_refs")
+            test -z "$tagged_commit" || test "$tagged_commit" = "$GITHUB_SHA"
+            gh release create "$version" "${assets[@]}" --target "$GITHUB_SHA" --generate-notes
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
